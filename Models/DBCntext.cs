@@ -1,0 +1,54 @@
+﻿using LabMasterSystem.Models;
+using Microsoft.EntityFrameworkCore;
+
+namespace LabMasterSystem.Models
+{
+    public class ApplicationDbContext : DbContext
+    {
+        public ApplicationDbContext()
+        {
+        }
+
+        public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
+            : base(options)
+        {
+        }
+        public DbSet<User> Users { get; set; }
+
+        public DbSet<Admin> Admins { get; set; }
+        public DbSet<Equipment> Equipments { get; set; }
+        public DbSet<Supervisour> Supervisours { get; set; }
+        public DbSet<Client> Clients { get; set; }
+        public DbSet<Lab> Labs { get; set; }
+        public DbSet<Booking> Bookings { get; set; }
+        public DbSet<Notification> Notifications { get; set; }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+
+            modelBuilder.Entity<Booking>()
+                .HasOne(b => b.Client)
+                .WithMany(c => c.Bookings)
+                .HasForeignKey(b => b.ClientId)
+                .OnDelete(DeleteBehavior.Restrict); 
+            modelBuilder.Entity<Lab>()
+        .HasOne(l => l.Supervisour)
+        .WithMany()
+        .HasForeignKey(l => l.SupervisorId)
+        .OnDelete(DeleteBehavior.Restrict); 
+            modelBuilder.Entity<Lab>()
+        .HasOne(l => l.Supervisour)
+        .WithMany(s => s.Labs)
+        .HasForeignKey(l => l.SupervisourId)
+        .OnDelete(DeleteBehavior.Cascade);
+            modelBuilder.Entity<Equipment>()
+            .Ignore(e => e.ImageFile);
+            modelBuilder.Entity<Booking>()
+                .HasOne(b => b.Equipment)
+                .WithMany(e => e.Bookings)
+                .HasForeignKey(b => b.EquipmentId)
+                .OnDelete(DeleteBehavior.Restrict);
+        }
+    }
+}

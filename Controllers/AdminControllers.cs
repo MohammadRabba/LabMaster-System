@@ -1,0 +1,375 @@
+using LabMasterSystem.EntityDTO;
+using LabMasterSystem.EntityManager;
+using LabMasterSystem.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.Rendering;
+using Microsoft.EntityFrameworkCore;
+using System.Linq;
+using System.Security.Claims;
+
+namespace LabMasterSystem.Controllers
+{
+    [Authorize(Roles = "Admin")]
+
+    public class AdminController :
+    Controller
+    {
+        private readonly AdminManager adminManager;
+        private readonly BookingManager bookingManager;
+        private readonly LabManager labManager;
+        private readonly SupervisourManager superManager;
+
+        public AdminController(AdminManager context, BookingManager bookingManager, LabManager labManager, SupervisourManager superManager)
+        {
+            adminManager = context;
+            this.bookingManager = bookingManager;
+            this.labManager = labManager;
+            this.superManager = superManager;
+        }
+
+
+        public IActionResult DeleteUser(int id)
+        {
+
+
+            adminManager.RemoveUser(id);
+            TempData["Message"] = "User deleted successfully.";
+            return RedirectToAction("UserManagement");
+        }
+
+        public IActionResult AddUser()
+        {
+            return View(new UserDTO());
+        }
+
+        public IActionResult UpdateUser()
+        {
+            return View(new UserDTO());
+        }
+
+        [HttpGet]
+        public IActionResult UpdateUser(int id)
+        {
+            var user = adminManager.getAllUsers().FirstOrDefault(u => u.Id == id);
+            if (user == null)
+                return NotFound();
+
+            var dto = new UserDTO
+            {
+                FullName = user.FullName,
+                Email = user.Email,
+                Password = user.Password,
+                ConfirmPassword = user.Password,
+                PhoneNumber = user.PhoneNumber,
+                SelectedRoleName = user.Role,
+                Specialist = user is Supervisour sup ? sup.Specialist : null,
+                type = user is Client cli ? cli.type : null
+            };
+
+            return View(dto);
+        }
+
+
+        [HttpPost]
+        public IActionResult UpdateUser(UserDTO user)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View(user);
+            }
+
+            try
+            {
+                adminManager.UpdateUser(user);
+                TempData["SuccessMessage"] = "User updated successfully";
+                return RedirectToAction("UserManagement");
+            }
+            catch (Exception ex)
+            {
+                TempData["ErrorMessage"] = ex.Message;
+                return View(user);
+            }
+        }
+
+        
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult AddUser(UserDTO user)
+        {
+            if (!ModelState.IsValid)
+            {
+                return View(user);
+            }
+
+            adminManager.AddUser(user);
+            TempData["Message"] = "User added successfully.";
+            return RedirectToAction("UserManagement");
+        }
+        public IActionResult Dashboard()
+        {
+            var email = User.FindFirstValue(ClaimTypes.Email);
+
+            if (string.IsNullOrEmpty(email))
+                return RedirectToAction("Login", "Account");
+
+            var user = adminManager.getUserByEmail(email);
+
+            if (user == null)
+                return RedirectToAction("Login", "Account");
+
+            return View(user);
+        }
+
+        public IActionResult BookingManagement()
+        {
+            var bookings = bookingManager.getAllBooking();
+            return View(bookings);
+        }
+
+        [HttpGet]
+        public IActionResult EditBooking()
+        {
+
+
+            return View();
+        }
+
+
+        [HttpPut]
+        public IActionResult EditBooking(int id, BookingDTO booking, string cientName, String EquepmentName)
+        {
+            var boking = bookingManager.EditBooking(id, booking, cientName, EquepmentName);
+            if (boking == true)
+            {
+                TempData["Message"] = "Booking Updated Successfully.";
+
+            }
+            else
+            {
+                TempData["Message"] = "Error.";
+
+            }
+
+            return View(booking);
+        }
+
+        public IActionResult DeleteBooking(int id)
+        {
+            var deleted = bookingManager.RemoveBooking(id);
+            if (deleted == false) { return NotFound(); }
+            TempData["Message"] = "Booking deleted successfully.";
+            return RedirectToAction("BookingManagement");
+        }
+        
+        public IActionResult UserManagement(string searchTerm, string roleFilter)
+            {
+                var users = adminManager.getAllUsers();
+
+                if (!string.IsNullOrWhiteSpace(searchTerm))
+                {
+                    searchTerm = searchTerm.ToLower();
+                    users = users.Where(u =>
+                        (!string.IsNullOrEmpty(u.FullName) && u.FullName.ToLower().Contains(searchTerm)) ||
+                        (!string.IsNullOrEmpty(u.Email) && u.Email.ToLower().Contains(searchTerm)) ||
+                        (!string.IsNullOrEmpty(u.Role) && u.Role.ToLower().Contains(searchTerm)) ||
+                        (!string.IsNullOrEmpty(u.PhoneNumber) && u.PhoneNumber.ToLower().Contains(searchTerm))
+                    ).ToList();
+                }
+
+               if (!string.IsNullOrEmpty(roleFilter))
+                {
+                    users = users.Where(u => u.Role == roleFilter).ToList();
+                }
+                
+                ViewBag.TotalUsers = users.Count;
+                return View(users);
+            }
+        
+        public IActionResult UserManagement11()
+        {
+            var users = adminManager.getAllUsers();
+            return View(users);
+        }
+        public IActionResult LabSettings()
+        {
+            var users = labManager.getAllLabs();
+            return View(users);
+        }
+
+        [HttpGet]
+        public IActionResult AddLab()
+        {
+            PopulateSupervisorsDropdown();
+            return View(new LabDTO());
+        }
+
+        [HttpPost]
+        public IActionResult AddLab(LabDTO labDto)
+        {
+            PopulateSupervisorsDropdown();
+
+            if (!ModelState.IsValid)
+            {
+                TempData["ErrorMessage"] = "Please correct the errors and try again.";
+                return View("AddLab", labDto);
+            }
+
+            try
+            {
+                labManager.AddLab(labDto);
+
+                TempData["Message"] = "Lab added successfully.";
+                return RedirectToAction("LabSettings");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error adding lab: {ex.Message}");
+                TempData["ErrorMessage"] = $"Error adding lab: {ex.Message}";
+                return View("AddLab", labDto);
+            }
+        }
+
+        [HttpGet]
+        public IActionResult EditLab(int id)
+        {
+            var lab = labManager.GetLabById(id);
+            if (lab == null)
+            {
+                return NotFound();
+            }
+
+            return View(lab);
+        }
+
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult EditLab(Lab lab, List<string> EquipmentNames)
+        {
+
+            //if (EquipmentNames != null && EquipmentNames.Any(string.IsNullOrWhiteSpace))
+            //{
+            //    ModelState.AddModelError("EquipmentNames", "Equipment names cannot be empty.");
+            //}
+
+            if (!ModelState.IsValid)
+            {
+                TempData["ErrorMessage"] = "Please correct the errors and try again.";
+                return View(lab);
+            }
+
+            try
+            {
+
+                var labDto = new LabDTO
+                {
+                    Name = lab.Name,
+                    Description = lab.Description,
+                    SelectedSupervisorId = lab.Supervisour.FullName,
+                    EquipmentNames = EquipmentNames ?? new List<string>()
+                };
+
+                bool updateSuccess = labManager.UpdateLab(labDto);
+
+                if (!updateSuccess)
+                {
+                    TempData["ErrorMessage"] = "Failed to update lab. It might not exist or another error occurred.";
+                    return View(lab);
+                }
+
+                TempData["Message"] = "Lab updated successfully.";
+                return RedirectToAction("LabSettings");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error updating lab: {ex.Message}");
+                TempData["ErrorMessage"] = $"Error updating lab: {ex.Message}";
+                return View(lab);
+            }
+        }
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public IActionResult UpdateLabBasic(int id, string name, string description)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                ModelState.AddModelError("Name", "Lab name is required.");
+            }
+
+            if (!ModelState.IsValid)
+            {
+                var lab = new Lab { Id = id, Name = name, Description = description };
+                TempData["ErrorMessage"] = "Please correct the errors and try again.";
+                return View("EditLab", lab);
+            }
+
+            bool updated = labManager.UpdateLabNameAndDescription(id, name, description);
+
+            if (!updated)
+            {
+                TempData["ErrorMessage"] = "Lab not found or cannot be updated.";
+                return View("EditLab", new Lab { Id = id, Name = name, Description = description });
+            }
+
+            TempData["Message"] = "Lab updated successfully.";
+            return RedirectToAction("LabSettings");
+        }
+
+
+        private void PopulateSupervisorsDropdown(int? selectedId = null)
+        {
+            ViewBag.SupervisorsList = superManager.GetAllSupervisours()
+                .Select(u => new SelectListItem
+                {
+                    Value = u.FullName,
+                    Text = u.FullName,
+                    Selected = (selectedId.HasValue && u.Id == selectedId.Value)
+                })
+                .ToList();
+        }
+
+        public IActionResult DeleteLab(int id)
+        {
+            labManager.RemoveLab(id);
+
+            TempData["Message"] = "Lab deleted successfuly.";
+            return RedirectToAction("LabSettings");
+        }
+
+     public IActionResult Reports()
+    {
+        // Get all bookings from the system
+        var bookings = bookingManager.getAllBooking();
+
+        // Total number of bookings
+        var totalBookings = bookings.Count();
+
+        // Get the name of the most used lab (based on booking count)
+        var mostUsed = bookingManager.GetBookings();
+
+        // Get all labs with related Equipment and Supervisour info
+        var labs = labManager.GetAllLabsWithDetails(); // includes Equipment and Supervisour
+
+        // Count bookings per lab
+        var labBookings = labs.Select(lab => new
+        {
+            Lab = lab,
+            BookingCount = bookings.Count(b => b.Equipment != null && b.Equipment.LabId == lab.Id)
+        }).ToList();
+
+        // Pass to ViewBag
+        ViewBag.TotalBookings = totalBookings;
+        ViewBag.MostUsedLab = mostUsed;
+        ViewBag.LabBookings = labBookings;
+
+        // No need to pass a model
+        return View();
+    }
+
+
+
+        
+
+        
+    }
+}
