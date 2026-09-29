@@ -1,4 +1,4 @@
-# AAUP LabMaster
+# LabMaster System
 
 <div align="center">
 
